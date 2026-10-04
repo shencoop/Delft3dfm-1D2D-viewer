@@ -104,7 +104,7 @@ pixi run dfm-convert -i "D:\Data\Penghu_DFM_NC" -o "D:\Data\Penghu_Zarr" --crs "
 
 ---
 
-### 3.3 Python API 程式庫調用範例
+### 3.3 Python API 程式範例
 
 除了 CLI 指令外，亦可在自訂 Python 腳本或 Jupyter Notebook 中調用本模組進行客製化轉檔：
 
