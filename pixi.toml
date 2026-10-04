@@ -1,0 +1,34 @@
+[project]
+name = "delft3d-fm-viewer"
+version = "1.0.0"
+description = "Delft3D-FM 1D2D Multi-Partition Spatio-Temporal Water Level Viewer & NC-to-Zarr/COG Converter"
+authors = ["Flood Modeling Team"]
+channels = ["conda-forge"]
+platforms = ["win-64", "linux-64", "osx-arm64"]
+
+[dependencies]
+python = ">=3.11,<3.13"
+fastapi = ">=0.110.0"
+uvicorn = ">=0.28.0"
+rasterio = ">=1.3.9"
+xarray = ">=2024.1.0"
+zarr = ">=2.16.0"
+pyproj = ">=3.6.1"
+pillow = ">=10.2.0"
+numpy = ">=1.26.0,<2.0"
+pandas = ">=2.2.0"
+netcdf4 = ">=1.6.5"
+h5netcdf = ">=1.3.0"
+jinja2 = ">=3.1.3"
+python-multipart = ">=0.0.9"
+
+[tasks]
+viewer = "python -m dfm_viewer.main"
+convert = "python -m dfm_viewer.convert"
+
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[tool.pixi.project]
+name = "delft3d-fm-viewer"

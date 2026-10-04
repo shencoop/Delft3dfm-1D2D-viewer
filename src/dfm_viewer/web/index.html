@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title id="pageTitle">Delft3D-FM 1D2D 多分區水理時空成果展示圖台</title>
+
+  <!-- Leaflet & Fonts (雙重備援: 本機與 CDN 自動切換 / Dual Fallback: Local & CDN) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <!-- Chart.js CDN for Timeseries / 時序圖表套件 -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    :root {
+      --bg-dark: #0f172a;
+      --bg-panel: rgba(15, 23, 42, 0.88);
+      --bg-card: #1e293b;
+      --accent: #38bdf8;
+      --accent-hover: #0ea5e9;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --border: rgba(255, 255, 255, 0.12);
+      --danger: #ef4444;
+      --success: #10b981;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif);
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 20px;
+      background: var(--bg-panel);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      z-index: 1000;
+    }
+
+    .brand-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-title span {
+      background: linear-gradient(135deg, #38bdf8, #818cf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .header-badges {
+      display: flex;
+      gap: 10px;
+      font-size: 0.82rem;
+    }
+
+    .badge {
+      background: var(--bg-card);
+      padding: 4px 10px;
+      border-radius: 9999px;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+
+    .badge b {
+      color: var(--accent);
+    }
+
+    .lang-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      padding: 4px 8px;
+      font-size: 0.78rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .lang-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* Layout */
+    .app-container {
+      display: flex;
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Sidebar Controls */
+    aside {
+      width: 380px;
+      background: var(--bg-panel);
+      backdrop-filter: blur(12px);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding: 16px;
+      z-index: 500;
+      overflow-y: auto;
+    }
+
+    .section-box {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .section-title {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--accent);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    input[type="text"],
+    select {
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      outline: none;
+    }
+
+    input[type="text"]:focus,
+    select:focus {
+      border-color: var(--accent);
+    }
+
+    button {
+      background: var(--accent);
+      color: #04101e;
+      font-weight: 600;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: all 0.2s ease;
+    }
+
+    button:hover {
+      background: var(--accent-hover);
+      transform: translateY(-1px);
+    }
+
+    button.secondary {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+    }
+
+    button.secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    /* Partition Layer List */
+    .partition-list {
+      max-height: 140px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 4px;
+      padding: 6px;
+    }
+
+    .partition-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.78rem;
+      padding: 3px 6px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .partition-item span {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 260px;
+    }
+
+    /* Map Area */
+    #map {
+      flex: 1;
+      height: 100%;
+      background: #090d16;
+    }
+
+    /* Floating Hydro Timeseries Modal */
+    #chartPanel {
+      position: absolute;
+      bottom: 80px;
+      right: 20px;
+      width: 440px;
+      background: var(--bg-panel);
+      backdrop-filter: blur(14px);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      z-index: 1000;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+      display: none;
+    }
+
+    #chartPanel.active {
+      display: block;
+    }
+
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .chart-header h3 {
+      font-size: 0.88rem;
+      color: var(--accent);
+    }
+
+    .close-btn {
+      cursor: pointer;
+      color: var(--text-muted);
+      font-weight: bold;
+    }
+
+    .close-btn:hover {
+      color: var(--text-main);
+    }
+
+    /* Timeline Bottom Bar */
+    .timeline-bar {
+      position: absolute;
+      bottom: 16px;
+      left: 400px;
+      right: 30px;
+      background: var(--bg-panel);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 18px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      z-index: 500;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+    }
+
+    .timeline-bar input[type="range"] {
+      flex: 1;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    .time-badge {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: var(--accent);
+      min-width: 145px;
+      text-align: right;
+      letter-spacing: 0.5px;
+    }
+
+    /* Legend */
+    .legend-box {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: var(--bg-panel);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      z-index: 500;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 0.75rem;
+    }
+
+    .legend-gradient {
+      height: 10px;
+      width: 140px;
+      border-radius: 4px;
+      background: linear-gradient(to right, rgba(20, 150, 255, 0.8), rgba(60, 200, 100, 0.8), rgba(255, 220, 0, 0.8), rgba(255, 50, 50, 0.8));
+    }
+
+    .legend-labels {
+      display: flex;
+      justify-content: space-between;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+
+<body>
+
+  <header>
+    <div class="brand-title">
+      <span>Delft3D-FM 1D2D</span> <span data-i18n="appTitle">多分區水理成果展示圖台</span>
+    </div>
+    <div class="header-right">
+      <div class="header-badges">
+        <span class="badge"><span data-i18n="badgePartitions">分區數量</span>: <b id="partCount">11</b></span>
+        <span class="badge"><span data-i18n="badgeTimeseries">時序長度</span>: <b id="timeSteps">13 步 (12h)</b></span>
+        <span class="badge"><span data-i18n="badgeCRS">坐標系</span>: <b>TWD97 / TM2</b></span>
+      </div>
+      <button id="langToggleBtn" class="lang-btn" type="button" title="切換語言 / Switch Language">🌐 EN / 中文</button>
+    </div>
+  </header>
+
+  <div class="app-container">
+    <!-- 控制側邊欄 / Control Sidebar -->
+    <aside>
+      <!-- 1. 資料來源切換 / Data Source Selection -->
+      <div class="section-box">
+        <div class="section-title">
+          <span data-i18n="secDataSource">📁 ZARR / COG 資料來源</span>
+        </div>
+        <label>
+          <span data-i18n="lblFolderPath">資料夾路徑</span>
+          <input id="dataPath" type="text" value="D:\2026WRAP\ZARR\0005\Changhua-12hr-300mm-Yuanlin_ZARR">
+        </label>
+        <div style="display: flex; gap: 8px; margin-top: 4px;">
+          <button id="browseFolderBtn" type="button" class="secondary" style="flex: 1;" data-i18n="btnBrowseFolder">📂 點選瀏覽資料夾</button>
+          <button id="scanBtn" type="button" style="flex: 1;" data-i18n="btnRescan">🔄 重新掃描</button>
+        </div>
+        <input id="folderInput" type="file" webkitdirectory directory multiple style="display: none;">
+      </div>
+
+      <!-- 2. WMTS 底圖切換 / Base Map Selection -->
+      <div class="section-box">
+        <div class="section-title">
+          <span data-i18n="secBaseMap">🗺️ WMTS 底圖選擇</span>
+        </div>
+        <label>
+          <span data-i18n="lblBaseLayer">底圖圖層</span>
+          <select id="baseMapSelect">
+            <option value="emap" data-i18n="optEmap">臺灣通用電子地圖 (EMAP)</option>
+            <option value="photo" data-i18n="optPhoto">臺灣正射影像圖 (PHOTO)</option>
+            <option value="dark" data-i18n="optDark">CartoDB 暗黑風格 (Dark)</option>
+            <option value="osm" data-i18n="optOsm">OpenStreetMap (OSM)</option>
+          </select>
+        </label>
+      </div>
+
+      <!-- 3. 向量與分區套疊 / Partition & Vector Overlay -->
+      <div class="section-box">
+        <div class="section-title">
+          <span><span data-i18n="secPartitions">🧩 分區圖層與邊界套疊</span> (<span id="activeCount">11</span>/11)</span>
+          <button id="toggleAllBtn" class="secondary" style="padding: 2px 6px; font-size: 0.72rem;" data-i18n="btnToggleAll">全選/取消</button>
+        </div>
+        <div id="partitionList" class="partition-list"></div>
+
+        <label style="margin-top: 6px;">
+          <span data-i18n="lblCustomVector">套疊自訂向量 (GeoJSON)</span>
+          <input id="vectorFile" type="file" accept=".geojson,.json">
+        </label>
+      </div>
+
+      <!-- 4. 淹水色階與透明度調整 / Color & Opacity Settings -->
+      <div class="section-box">
+        <div class="section-title">
+          <span data-i18n="secColors">🎨 淹水色階與透明度設定</span>
+        </div>
+        <label>
+          <span data-i18n="lblColorScheme">配色方案</span>
+          <select id="colorSchemeSelect">
+            <option value="standard" data-i18n="optSchemeStandard">標準水利六階藍色系 (水利署規範)</option>
+            <option value="hazard" data-i18n="optSchemeHazard">藍-黃-紅 災害警示系 (高對比)</option>
+          </select>
+        </label>
+        <label style="margin-top: 4px;">
+          <span data-i18n="lblOpacity">整體透明度倍率</span>: <b id="opacityVal" style="color: var(--accent);">100%</b>
+          <input id="opacitySlider" type="range" min="10" max="150" value="100">
+        </label>
+        <label style="flex-direction: row; align-items: center; gap: 8px; margin-top: 6px; cursor: pointer; color: var(--text-main);">
+          <input id="shallowToggle" type="checkbox">
+          <span data-i18n="lblShallowWater">顯示 0.1m ~ 0.3m 淺積水 (手冊規範預設隱藏)</span>
+        </label>
+      </div>
+
+      <!-- 5. 點位查詢說明 / Point Query Info -->
+      <div class="section-box">
+        <div class="section-title">
+          <span data-i18n="secQueryInfo">📊 時空點位查詢</span>
+        </div>
+        <p id="queryDescText" style="font-size: 0.78rem; color: var(--text-muted); line-height: 1.4;" data-i18n="txtQueryDesc">
+          👉 點擊地圖上任意位置，系統將自動定位所屬分區與網格，即時提取水深歷線曲線圖。
+        </p>
+      </div>
+    </aside>
+
+    <!-- 地圖核心容器 / Map Container -->
+    <div id="map"></div>
+
+    <!-- 水深圖例 / Flood Depth Legend -->
+    <div class="legend-box" style="min-width: 170px;">
+      <span style="font-weight: 700; margin-bottom: 2px;" data-i18n="legendTitle">淹水深度色階 (m)</span>
+      <div style="display: flex; flex-direction: column; gap: 3px; font-size: 0.75rem;">
+        <div id="legendShallow" style="display: none; align-items: center; gap: 6px;"><i
+            style="width: 14px; height: 10px; background: rgba(198,219,239,0.7); border: 1px solid rgba(255,255,255,0.2); border-radius: 2px;"></i>
+          0.1 ~ 0.3 m (<span data-i18n="legLightBlue70">淺藍 70%</span>)</div>
+        <div style="display: flex; align-items: center; gap: 6px;"><i
+            style="width: 14px; height: 10px; background: rgba(198,219,239,0.4); border: 1px solid rgba(255,255,255,0.2); border-radius: 2px;"></i>
+          0.3 ~ 0.5 m (<span data-i18n="legLightBlue40">淺藍 40%</span>)</div>
+        <div style="display: flex; align-items: center; gap: 6px;"><i
+            style="width: 14px; height: 10px; background: rgba(120,180,214,0.4); border: 1px solid rgba(255,255,255,0.2); border-radius: 2px;"></i>
+          0.5 ~ 1.0 m (<span data-i18n="legMidLightBlue">中淺藍 40%</span>)</div>
+        <div style="display: flex; align-items: center; gap: 6px;"><i
+            style="width: 14px; height: 10px; background: rgba(66,146,198,0.4); border: 1px solid rgba(255,255,255,0.2); border-radius: 2px;"></i>
+          1.0 ~ 2.0 m (<span data-i18n="legMidBlue">中藍 40%</span>)</div>
+        <div style="display: flex; align-items: center; gap: 6px;"><i
+            style="width: 14px; height: 10px; background: rgba(37,81,156,0.4); border: 1px solid rgba(255,255,255,0.2); border-radius: 2px;"></i>
+          2.0 ~ 3.0 m (<span data-i18n="legMidDarkBlue">中深藍 40%</span>)</div>
+        <div style="display: flex; align-items: center; gap: 6px;"><i
+            style="width: 14px; height: 10px; background: rgba(8,48,107,0.4); border: 1px solid rgba(255,255,255,0.2); border-radius: 2px;"></i>
+          > 3.0 m (<span data-i18n="legDarkBlue">深藍 40%</span>)</div>
+      </div>
+    </div>
+
+    <!-- 點位時序圖表懸浮面板 / Hydrograph Timeseries Modal -->
+    <div id="chartPanel">
+      <div class="chart-header">
+        <h3 id="chartTitle" data-i18n="chartTitleDefault">📍 點位水深時序歷線</h3>
+        <span class="close-btn" id="closeChart">✕</span>
+      </div>
+      <div id="chartContainer" style="position: relative; height: 210px; width: 100%;">
+        <canvas id="hydroChartCanvas"></canvas>
+      </div>
+    </div>
+
+    <!-- 底部時序播放控制器 / Bottom Timeline Controller -->
+    <div class="timeline-bar">
+      <button id="playBtn" type="button" style="min-width: 80px;" data-i18n="btnPlay">▶ 播放</button>
+      <input id="timeSlider" type="range" min="0" max="12" value="0">
+      <div id="currentTimeLabel" class="time-badge">T+0h</div>
+    </div>
+  </div>
+
+  <!-- Scripts / 核心腳本庫 -->
+  <script src="/static/leaflet.js"></script>
+  <script type="module">
+    /**
+     * Delft3D-FM Multi-Partition Spatio-Temporal Viewer Frontend Logic
+     * Delft3D-FM 1D2D 多分區水理時空成果展示圖台前端核心商務邏輯
+     */
+    const $ = id => document.getElementById(id);
+    let catalog = null;
+    let map = null;
+    let currentBaseLayer = null;
+    let partitionOverlays = {};
+    let partitionBoundsLayers = {};
+    let customVectorLayer = null;
+    let currentFrame = 0;
+    let isPlaying = false;
+    let playInterval = null;
+    let chartInstance = null;
+    let lastQueryData = null; // 快取最後一次查詢資料以利切換語言時重繪圖表
+
+    // 多國語系字典 (i18n Dictionary for Traditional Chinese & English)
+    const i18n = {
+      zh: {
+        pageTitle: "Delft3D-FM 1D2D 多分區水理時空成果展示圖台",
+        appTitle: "多分區水理成果展示圖台",
+        badgePartitions: "分區數量",
+        badgeTimeseries: "時序長度",
+        badgeCRS: "坐標系",
+        secDataSource: "📁 ZARR / COG 資料來源",
+        lblFolderPath: "資料夾路徑",
+        btnBrowseFolder: "📂 點選瀏覽資料夾",
+        btnRescan: "🔄 重新掃描",
+        secBaseMap: "🗺️ WMTS 底圖選擇",
+        lblBaseLayer: "底圖圖層",
+        optEmap: "臺灣通用電子地圖 (EMAP)",
+        optPhoto: "臺灣正射影像圖 (PHOTO)",
+        optDark: "CartoDB 暗黑風格 (Dark)",
+        optOsm: "OpenStreetMap (OSM)",
+        secPartitions: "🧩 分區圖層與邊界套疊",
+        btnToggleAll: "全選/取消",
+        lblCustomVector: "套疊自訂向量 (GeoJSON)",
+        secColors: "🎨 淹水色階與透明度設定",
+        lblColorScheme: "配色方案",
+        optSchemeStandard: "標準水利六階藍色系 (水利署規範)",
+        optSchemeHazard: "藍-黃-紅 災害警示系 (高對比)",
+        lblOpacity: "整體透明度倍率",
+        lblShallowWater: "顯示 0.1m ~ 0.3m 淺積水 (手冊規範預設隱藏)",
+        secQueryInfo: "📊 時空點位查詢",
+        txtQueryDesc: "👉 點擊地圖上任意位置，系統將自動定位所屬分區與網格，即時提取水深歷線曲線圖。",
+        legendTitle: "淹水深度色階 (m)",
+        legLightBlue70: "淺藍 70%",
+        legLightBlue40: "淺藍 40%",
+        legMidLightBlue: "中淺藍 40%",
+        legMidBlue: "中藍 40%",
+        legMidDarkBlue: "中深藍 40%",
+        legDarkBlue: "深藍 40%",
+        chartTitleDefault: "📍 點位水深時序歷線",
+        btnPlay: "▶ 播放",
+        btnPause: "⏸ 暫停",
+        popupTitle: "📍 淹水網格點位查詢",
+        popupMaxDepth: "最大水深",
+        popupCoveredParts: "涵蓋分區",
+        popupNoData: "該點位無水深資料",
+        chartCompositeLabel: "全區最大水深合成",
+        chartYAxis: "水深 (m)",
+        alertLoadFail: "載入失敗",
+        alertGeojsonFail: "解析 GeoJSON 失敗"
+      },
+      en: {
+        pageTitle: "Delft3D-FM 1D2D Multi-Partition Spatio-Temporal Viewer",
+        appTitle: "Multi-Partition Hydrodynamic Viewer",
+        badgePartitions: "Partitions",
+        badgeTimeseries: "Time Series",
+        badgeCRS: "CRS",
+        secDataSource: "📁 ZARR / COG Data Source",
+        lblFolderPath: "Folder Path",
+        btnBrowseFolder: "📂 Browse Folder",
+        btnRescan: "🔄 Rescan Directory",
+        secBaseMap: "🗺️ WMTS Base Map",
+        lblBaseLayer: "Base Layer",
+        optEmap: "Taiwan e-Map (EMAP)",
+        optPhoto: "Taiwan Orthophoto (PHOTO)",
+        optDark: "CartoDB Dark Theme",
+        optOsm: "OpenStreetMap (OSM)",
+        secPartitions: "🧩 Partition Layers & Bounds",
+        btnToggleAll: "Select/Deselect All",
+        lblCustomVector: "Overlay Custom Vector (GeoJSON)",
+        secColors: "🎨 Color Scheme & Opacity",
+        lblColorScheme: "Color Palette",
+        optSchemeStandard: "Standard 6-Class Blue (WRA Standard)",
+        optSchemeHazard: "Blue-Yellow-Red Hazard Warning",
+        lblOpacity: "Overall Opacity Scale",
+        lblShallowWater: "Show 0.1m - 0.3m Shallow Water (Hidden by default)",
+        secQueryInfo: "📊 Spatio-Temporal Point Query",
+        txtQueryDesc: "👉 Click anywhere on the map to locate partitions and query 2.5m precision hydrograph curves.",
+        legendTitle: "Inundation Depth (m)",
+        legLightBlue70: "Light Blue 70%",
+        legLightBlue40: "Light Blue 40%",
+        legMidLightBlue: "Mid-Light Blue 40%",
+        legMidBlue: "Mid Blue 40%",
+        legMidDarkBlue: "Mid-Dark Blue 40%",
+        legDarkBlue: "Deep Blue 40%",
+        chartTitleDefault: "📍 Point Hydrograph Timeseries",
+        btnPlay: "▶ Play",
+        btnPause: "⏸ Pause",
+        popupTitle: "📍 Point Depth Query",
+        popupMaxDepth: "Max Depth",
+        popupCoveredParts: "Covered Partitions",
+        popupNoData: "No water depth data at this point",
+        chartCompositeLabel: "Composite Max Depth",
+        chartYAxis: "Depth (m)",
+        alertLoadFail: "Load Failed",
+        alertGeojsonFail: "Failed to parse GeoJSON"
+      }
+    };
+
+    let currentLang = 'zh';
+
+    function setLanguage(lang) {
+      currentLang = lang;
+      const dict = i18n[lang];
+      document.title = dict.pageTitle;
+
+      // Update all elements with data-i18n
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (dict[key]) {
+          el.textContent = dict[key];
+        }
+      });
+
+      // Update button text if not playing
+      if (!isPlaying) {
+        $('playBtn').textContent = dict.btnPlay;
+      } else {
+        $('playBtn').textContent = dict.btnPause;
+      }
+
+      if (lastQueryData) {
+        showChart(lastQueryData);
+      }
+    }
+
+    $('langToggleBtn').addEventListener('click', () => {
+      setLanguage(currentLang === 'zh' ? 'en' : 'zh');
+    });
+
+    // WMTS Base Maps (底圖來源配置)
+    const baseMaps = {
+      emap: L.tileLayer('https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}', {
+        attribution: '© 內政部國土測繪中心 · 臺灣通用電子地圖', maxZoom: 19
+      }),
+      photo: L.tileLayer('https://wmts.nlsc.gov.tw/wmts/PHOTO2/default/GoogleMapsCompatible/{z}/{y}/{x}', {
+        attribution: '© 內政部國土測繪中心 · 正射影像圖', maxZoom: 19
+      }),
+      dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '© CartoDB Dark', maxZoom: 19
+      }),
+      osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap', maxZoom: 19
+      })
+    };
+
+    function initMap() {
+      map = L.map('map', { zoomControl: false }).setView([23.95, 120.55], 11);
+      L.control.zoom({ position: 'topright' }).addTo(map);
+      currentBaseLayer = baseMaps.emap.addTo(map);
+
+      // Base map switch
+      $('baseMapSelect').addEventListener('change', (e) => {
+        if (currentBaseLayer) map.removeLayer(currentBaseLayer);
+        currentBaseLayer = baseMaps[e.target.value].addTo(map);
+      });
+
+      // 點擊查詢標記與 Popup (Query Marker & Popup)
+      let queryMarker = null;
+
+      // Point Query Click / 點擊地圖查詢點位水深時序歷線
+      map.on('click', async (e) => {
+        const { lat, lng } = e.latlng;
+        const dict = i18n[currentLang];
+
+        if (queryMarker) map.removeLayer(queryMarker);
+        queryMarker = L.circleMarker([lat, lng], {
+          radius: 7,
+          color: '#ffffff',
+          fillColor: '#38bdf8',
+          fillOpacity: 1.0,
+          weight: 2.5
+        }).addTo(map);
+
+        try {
+          const res = await fetch(`/api/query/point?lng=${lng}&lat=${lat}`);
+          const data = await res.json();
+          lastQueryData = data;
+          if (data.hits && data.hits.length > 0) {
+            const popupContent = `
+              <div style="font-size:0.82rem; color:#0f172a; line-height:1.4;">
+                <b style="color:#0284c7;">${dict.popupTitle}</b><br>
+                <b>TWD97:</b> (${data.query_coord.x_twd97}, ${data.query_coord.y_twd97})<br>
+                <b>${dict.popupMaxDepth}:</b> <span style="color:#dc2626;font-weight:700;">${data.composite_max_depth} m</span><br>
+                <b>${dict.popupCoveredParts}:</b> ${data.hit_partitions.length}
+              </div>
+            `;
+            queryMarker.bindPopup(popupContent).openPopup();
+            showChart(data);
+          } else {
+            queryMarker.bindPopup(`<span style="font-size:0.8rem;color:#64748b;">${dict.popupNoData}</span>`).openPopup();
+          }
+        } catch (err) {
+          console.error('Point query failed / 查詢失敗:', err);
+        }
+      });
+    }
+
+    async function loadCatalog(scanPath = null) {
+      try {
+        let res;
+        if (scanPath) {
+          const fd = new FormData();
+          fd.append('path', scanPath);
+          res = await fetch('/api/catalog/scan', { method: 'POST', body: fd });
+        } else {
+          res = await fetch('/api/catalog');
+        }
+        if (!res.ok) {
+          const err = await res.json();
+          const dict = i18n[currentLang];
+          alert(`${dict.alertLoadFail}: ${err.detail || 'Error'}`);
+          return;
+        }
+        catalog = await res.json();
+        renderCatalog();
+      } catch (err) {
+        console.error('Directory scan failed / 掃描資料夾失敗:', err);
+      }
+    }
+
+    function renderCatalog() {
+      $('partCount').textContent = catalog.partition_count;
+      const rangeText = catalog.start_time && catalog.end_time ? `${catalog.start_time} ~ ${catalog.end_time}` : `${catalog.times.length} h`;
+      $('timeSteps').textContent = `${catalog.times.length} (${rangeText})`;
+      $('timeSlider').max = Math.max(0, catalog.times.length - 1);
+      $('timeSlider').value = 0;
+      currentFrame = 0;
+      updateTimeLabel(0);
+
+      // Fit Bounds / 自動適應縮放至所有分區聯集邊界
+      const [w, s, e, n] = catalog.union_bounds_wgs84;
+      if (w !== 0 && s !== 0) {
+        map.fitBounds([[s, w], [n, e]]);
+      }
+
+      // Render Partition List & Layer Cache / 渲染分區清單與圖層快取
+      const listEl = $('partitionList');
+      listEl.innerHTML = '';
+
+      // Clear old overlays / 清除舊圖層
+      Object.values(partitionOverlays).forEach(layer => map.removeLayer(layer));
+      Object.values(partitionBoundsLayers).forEach(layer => map.removeLayer(layer));
+      partitionOverlays = {};
+      partitionBoundsLayers = {};
+
+      catalog.partitions.forEach(p => {
+        const item = document.createElement('div');
+        item.className = 'partition-item';
+        item.innerHTML = `
+          <label style="flex-direction:row;align-items:center;gap:6px;cursor:pointer;">
+            <input type="checkbox" checked data-pid="${p.id}">
+            <span title="${p.name}">${p.name}</span>
+          </label>
+        `;
+        listEl.appendChild(item);
+
+        // Bounding Box Rectangle Layer / 分區外框虛線圖層
+        const [pw, ps, pe, pn] = p.bounds_wgs84;
+        const rect = L.rectangle([[ps, pw], [pn, pe]], {
+          color: '#38bdf8', weight: 1, fill: false, dashArray: '4,4'
+        }).addTo(map);
+        partitionBoundsLayers[p.id] = rect;
+      });
+
+      // Checkbox event / 圖層開關勾選事件
+      listEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+          const pid = e.target.dataset.pid;
+          if (partitionOverlays[pid]) {
+            partitionOverlays[pid].setOpacity(e.target.checked ? 0.85 : 0);
+          }
+          if (partitionBoundsLayers[pid]) {
+            if (e.target.checked) partitionBoundsLayers[pid].addTo(map);
+            else map.removeLayer(partitionBoundsLayers[pid]);
+          }
+          updateActiveCount();
+        });
+      });
+
+      updateActiveCount();
+      updateFrame(0);
+    }
+
+    function updateActiveCount() {
+      const checked = $('partitionList').querySelectorAll('input[type="checkbox"]:checked').length;
+      $('activeCount').textContent = checked;
+    }
+
+    let opacityScale = 1.0;
+    let currentColorScheme = 'standard';
+    let showShallow = false;
+
+    // Update single time frame / 更新指定時序圖層幀
+    function updateFrame(frameIdx) {
+      currentFrame = frameIdx;
+      updateTimeLabel(frameIdx);
+
+      catalog.partitions.forEach(p => {
+        const [pw, ps, pe, pn] = p.bounds_wgs84;
+        const url = `/api/partition/${p.id}/depth/${frameIdx}.png?opacity_scale=${opacityScale}&color_scheme=${currentColorScheme}&show_shallow=${showShallow}`;
+        const cb = $('partitionList').querySelector(`input[data-pid="${p.id}"]`);
+        const visible = cb ? cb.checked : true;
+
+        if (partitionOverlays[p.id]) {
+          partitionOverlays[p.id].setUrl(url);
+          partitionOverlays[p.id].setOpacity(visible ? 1.0 : 0);
+        } else {
+          const overlay = L.imageOverlay(url, [[ps, pw], [pn, pe]], {
+            opacity: visible ? 1.0 : 0, interactive: false
+          }).addTo(map);
+          partitionOverlays[p.id] = overlay;
+        }
+      });
+    }
+
+    // 透明度滑桿事件 / Opacity Slider Event
+    $('opacitySlider').addEventListener('input', (e) => {
+      const val = Number(e.target.value);
+      $('opacityVal').textContent = `${val}%`;
+      opacityScale = val / 100.0;
+      updateFrame(currentFrame);
+    });
+
+    // 配色方案切換事件 / Color Scheme Change Event
+    $('colorSchemeSelect').addEventListener('change', (e) => {
+      currentColorScheme = e.target.value;
+      updateFrame(currentFrame);
+    });
+
+    // 0.1m~0.3m 淺水層切換事件 / Shallow Water Toggle Event
+    $('shallowToggle').addEventListener('change', (e) => {
+      showShallow = e.target.checked;
+      const legend01 = document.getElementById('legendShallow');
+      if (legend01) {
+        legend01.style.display = showShallow ? 'flex' : 'none';
+      }
+      updateFrame(currentFrame);
+    });
+
+    function updateTimeLabel(idx) {
+      const lbl = catalog && catalog.time_labels && catalog.time_labels[idx] ? catalog.time_labels[idx] : `T+${idx}h`;
+      $('currentTimeLabel').textContent = lbl;
+    }
+
+    // Playback control / 時序動態播放控制
+    function togglePlay() {
+      const dict = i18n[currentLang];
+      if (isPlaying) {
+        clearInterval(playInterval);
+        isPlaying = false;
+        $('playBtn').textContent = dict.btnPlay;
+      } else {
+        if (!catalog || catalog.times.length === 0) return;
+        isPlaying = true;
+        $('playBtn').textContent = dict.btnPause;
+        playInterval = setInterval(() => {
+          let next = (Number($('timeSlider').value) + 1) % catalog.times.length;
+          $('timeSlider').value = next;
+          updateFrame(next);
+        }, 700);
+      }
+    }
+
+    $('playBtn').addEventListener('click', togglePlay);
+    $('timeSlider').addEventListener('input', (e) => {
+      if (isPlaying) togglePlay();
+      updateFrame(Number(e.target.value));
+    });
+
+    $('scanBtn').addEventListener('click', () => {
+      const p = $('dataPath').value.trim();
+      if (p) loadCatalog(p);
+    });
+
+    // 點選瀏覽資料夾事件 / Folder Picker Handler
+    $('browseFolderBtn').addEventListener('click', async () => {
+      if (window.showDirectoryPicker) {
+        try {
+          const dirHandle = await window.showDirectoryPicker();
+          alert(`已選擇資料夾: ${dirHandle.name}。\n若需載入本機伺服器路徑，請確認「資料夾路徑」欄位為正確的絕對路徑（例如 D:\\2026WRAP\\ZARR\\...）。`);
+        } catch (err) {
+          if (err.name !== 'AbortError') console.error('Folder picker error:', err);
+        }
+      } else {
+        $('folderInput').click();
+      }
+    });
+
+    $('folderInput').addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        const firstFile = e.target.files[0];
+        const relativePath = firstFile.webkitRelativePath || '';
+        const folderName = relativePath.split('/')[0];
+        alert(`已選取資料夾目錄: ${folderName}`);
+      }
+    });
+
+    // Custom GeoJSON Upload / 上傳自訂向量圖層
+    $('vectorFile').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          const geojson = JSON.parse(evt.target.result);
+          if (customVectorLayer) map.removeLayer(customVectorLayer);
+          customVectorLayer = L.geoJSON(geojson, {
+            style: { color: '#f59e0b', weight: 2, fillOpacity: 0.2 }
+          }).addTo(map);
+          map.fitBounds(customVectorLayer.getBounds());
+        } catch (ex) {
+          const dict = i18n[currentLang];
+          alert(`${dict.alertGeojsonFail}: ${ex.message}`);
+        }
+      };
+      reader.readAsText(file);
+    });
+
+    // Chart Modal Logic (自動多圖層合成最大水深 Envelope / Hydrograph Timeseries Chart)
+    function showChart(data) {
+      if (!data) return;
+      lastQueryData = data;
+      const dict = i18n[currentLang];
+      const partNames = data.hit_partitions.join(', ');
+      const titleInfo = data.hit_count > 1
+        ? `📍 ${dict.chartCompositeLabel} (${currentLang === 'zh' ? '涵蓋' : 'Covers'} ${data.hit_count} ${dict.badgePartitions})`
+        : `📍 ${dict.chartTitleDefault} - ${data.hit_partitions[0] || ''}`;
+
+      $('chartTitle').textContent = titleInfo;
+      $('chartTitle').title = partNames;
+      $('chartPanel').classList.add('active');
+
+      const container = document.getElementById('chartContainer') || $('chartPanel');
+      let canvas = document.getElementById('hydroChartCanvas');
+      if (canvas) {
+        canvas.remove();
+      }
+      canvas = document.createElement('canvas');
+      canvas.id = 'hydroChartCanvas';
+      container.appendChild(canvas);
+
+      // 建立資料集: 第一條為合成最大歷線 (粗線高亮)，其餘為個別分區歷線 (虛線/輔助)
+      const datasets = [{
+        label: `${dict.chartCompositeLabel} (Max: ${data.composite_max_depth}m)`,
+        data: data.composite_series,
+        borderColor: '#38bdf8',
+        backgroundColor: 'rgba(56, 189, 248, 0.25)',
+        fill: true,
+        tension: 0.3,
+        borderWidth: 2.5,
+        pointRadius: 3
+      }];
+
+      // 若有多個重疊分區，額外疊加個別分區曲線以供比對 / Multi-partition overlay curves
+      if (data.hits && data.hits.length > 1) {
+        const colors = ['#f59e0b', '#10b981', '#a855f7', '#ec4899'];
+        data.hits.forEach((h, idx) => {
+          datasets.push({
+            label: `${h.partition_name.replace('_map.zarr', '')} (${h.max_depth}m)`,
+            data: h.water_depth_series,
+            borderColor: colors[idx % colors.length],
+            borderDash: [4, 4],
+            borderWidth: 1.5,
+            fill: false,
+            pointRadius: 2,
+            tension: 0.2
+          });
+        });
+      }
+
+      try {
+        const ctx = canvas.getContext('2d');
+        chartInstance = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: data.time_labels,
+            datasets: datasets
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 300 },
+            interaction: {
+              mode: 'index',
+              intersect: false,
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                title: { display: true, text: dict.chartYAxis, color: '#94a3b8' },
+                grid: { color: 'rgba(255,255,255,0.08)' },
+                ticks: { color: '#94a3b8' }
+              },
+              x: {
+                grid: { color: 'rgba(255,255,255,0.08)' },
+                ticks: { color: '#94a3b8', maxRotation: 45, minRotation: 0 }
+              }
+            },
+            plugins: {
+              legend: {
+                position: 'top',
+                labels: { color: '#f8fafc', boxWidth: 12, font: { size: 11 } }
+              },
+              tooltip: {
+                callbacks: {
+                  label: function (context) {
+                    return ` ${context.dataset.label}: ${context.parsed.y.toFixed(3)} m`;
+                  }
+                }
+              }
+            }
+          }
+        });
+      } catch (err) {
+        console.error('Render Chart Failed / 繪製 Chart 失敗:', err);
+      }
+    }
+
+    $('closeChart').addEventListener('click', () => {
+      $('chartPanel').classList.remove('active');
+    });
+
+    $('toggleAllBtn').addEventListener('click', () => {
+      const cbs = $('partitionList').querySelectorAll('input[type="checkbox"]');
+      const anyUnchecked = Array.from(cbs).some(c => !c.checked);
+      cbs.forEach(c => {
+        c.checked = anyUnchecked;
+        c.dispatchEvent(new Event('change'));
+      });
+    });
+
+    // Initialize Map & Load Data / 初始化地圖並載入資料
+    initMap();
+    loadCatalog();
+  </script>
+</body>
+
+</html>
