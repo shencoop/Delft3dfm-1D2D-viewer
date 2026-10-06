@@ -33,8 +33,9 @@ class PartitionInfo:
     id: str
     name: str
     path: str
-    bounds_epsg3826: list  # [xmin, ymin, xmax, ymax]
-    bounds_wgs84: list     # [w, s, e, n]
+    crs: str               # e.g. 'EPSG:3826', 'EPSG:3825', 'EPSG:4326'
+    bounds_native: list    # [xmin, ymin, xmax, ymax] in native CRS
+    bounds_wgs84: list     # [w, s, e, n] in EPSG:4326
     shape: list            # [ny, nx]
     transform: list        # Affine elements
     times: list            # float or iso strings
@@ -50,8 +51,6 @@ class DataCatalog:
     time_labels: list = field(default_factory=list)
 
 catalog = DataCatalog()
-transformer_3826_to_4326 = Transformer.from_crs("EPSG:3826", "EPSG:4326", always_xy=True)
-transformer_4326_to_3826 = Transformer.from_crs("EPSG:4326", "EPSG:3826", always_xy=True)
 
 def scan_directory(target_path: str):
     p = Path(target_path).resolve()
@@ -84,13 +83,20 @@ def scan_directory(target_path: str):
             ds = xr.open_zarr(zf, consolidated=False)
             var = "Mesh2d_waterdepth" if "Mesh2d_waterdepth" in ds else ("h" if "h" in ds else list(ds.data_vars.keys())[0])
             
+            # 動態取得坐標系 (預設 EPSG:3826，支援 EPSG:3825 與 EPSG:4326)
+            native_crs = ds.attrs.get("crs", ds.attrs.get("spatial_ref", "EPSG:3826")).upper()
+            
             x_vals = ds.x.values
             y_vals = ds.y.values
             xmin, xmax = float(np.nanmin(x_vals)), float(np.nanmax(x_vals))
             ymin, ymax = float(np.nanmin(y_vals)), float(np.nanmax(y_vals))
             
-            dx = float(abs(x_vals[1] - x_vals[0])) if len(x_vals) > 1 else 10.0
-            dy = float(abs(y_vals[1] - y_vals[0])) if len(y_vals) > 1 else 10.0
+            # 若坐標範圍在經緯度範圍內，強制修正為 EPSG:4326
+            if native_crs in ["EPSG:3826", "EPSG:3825"] and (xmax <= 180.0 and xmin >= -180.0 and ymax <= 90.0 and ymin >= -90.0):
+                native_crs = "EPSG:4326"
+            
+            dx = float(abs(x_vals[1] - x_vals[0])) if len(x_vals) > 1 else (0.00005 if native_crs == "EPSG:4326" else 5.0)
+            dy = float(abs(y_vals[1] - y_vals[0])) if len(y_vals) > 1 else (0.00005 if native_crs == "EPSG:4326" else 5.0)
             
             # 像素邊界與 Affine Transform
             top_y = y_vals[0] if y_vals[0] > y_vals[-1] else y_vals[-1]
@@ -108,8 +114,11 @@ def scan_directory(target_path: str):
             bbox_xmax = xmax + dx / 2.0
             bbox_ymax = ymax + dy / 2.0
             
-            # 使用 densified transform_bounds 確保投影幾何無失真
-            bw, bs, be, bn = transform_bounds("EPSG:3826", "EPSG:4326", bbox_xmin, bbox_ymin, bbox_xmax, bbox_ymax, densify_pts=21)
+            # 使用 densified transform_bounds 確保投影幾何無失真 (支援 3826/3825/4326 -> 4326)
+            if native_crs == "EPSG:4326":
+                bw, bs, be, bn = bbox_xmin, bbox_ymin, bbox_xmax, bbox_ymax
+            else:
+                bw, bs, be, bn = transform_bounds(native_crs, "EPSG:4326", bbox_xmin, bbox_ymin, bbox_xmax, bbox_ymax, densify_pts=21)
             
             all_xmin = min(all_xmin, bbox_xmin)
             all_ymin = min(all_ymin, bbox_ymin)
@@ -118,6 +127,8 @@ def scan_directory(target_path: str):
             
             all_w = min(all_w, bw)
             all_s = min(all_s, bs)
+            all_e = max(all_e, be)
+            all_n = max(all_n, bn)
             all_e = max(all_e, be)
             all_n = max(all_n, bn)
             

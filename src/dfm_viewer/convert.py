@@ -120,18 +120,28 @@ def rasterize_dfm_faces_to_grid(
     fx: np.ndarray,
     fy: np.ndarray,
     values_2d: np.ndarray,
-    res: float = 5.0,
-    buffer_cells: int = 4
+    res: Optional[float] = None,
+    buffer_cells: int = 4,
+    crs_code: str = "EPSG:3826"
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Affine]:
     """
     將 Delft3D-FM 非結構網格面 (Mesh2d_nFaces) 坐標與數值映射至標準 2D 結構化網格
-    values_2d shape: (n_time, n_faces) 或 (n_faces,)
-    回傳: (grid_values, x_coords, y_coords, affine_tf)
+    支援三組權威坐標系:
+      - 台灣本島 121: EPSG:3826 (預設解析度 5.0m)
+      - 台灣離島 (澎湖/馬祖/金門) 119: EPSG:3825 (預設解析度 5.0m)
+      - 全球 / WGS 84 經緯度: EPSG:4326 (預設解析度 0.00005度 ~ 5m)
     """
+    # 若未指定解析度，依據坐標系自動給予黃金標準解析度
+    if res is None or res <= 0:
+        if crs_code.upper() in ["EPSG:4326", "WGS84", "CRS84"]:
+            res = 0.00005  # 約 5.5 公尺
+        else:
+            res = 5.0      # 公尺
+
     xmin, xmax = float(np.nanmin(fx)), float(np.nanmax(fx))
     ymin, ymax = float(np.nanmin(fy)), float(np.nanmax(fy))
 
-    # 計算對齊之網格邊界
+    # 計算對齊之網格邊界 (全域標準錨定)
     grid_xmin = np.floor(xmin / res) * res - (buffer_cells * res) + (res / 2.0)
     grid_xmax = np.ceil(xmax / res) * res + (buffer_cells * res) - (res / 2.0)
     grid_ymin = np.floor(ymin / res) * res - (buffer_cells * res) + (res / 2.0)
@@ -165,7 +175,8 @@ def convert_map_nc_to_zarr(
     nc_path: str,
     output_zarr_path: str,
     var_name: str = "Mesh2d_waterdepth",
-    res: float = 5.0
+    crs_code: str = "EPSG:3826",
+    res: Optional[float] = None
 ) -> str:
     """
     將 Delft3D-FM map.nc 時序檔案轉換為標準分塊 Zarr 格式
@@ -177,12 +188,17 @@ def convert_map_nc_to_zarr(
     fx = ds.Mesh2d_face_x.values
     fy = ds.Mesh2d_face_y.values
 
+    # 自動判斷坐標系 (若資料集坐標值為經緯度範圍且未明確指定)
+    if crs_code == "EPSG:3826" and (np.nanmax(fx) <= 180.0 and np.nanmin(fx) >= -180.0):
+        print("   ℹ️ 偵測到經緯度坐標範圍，自動調整坐標系為 EPSG:4326")
+        crs_code = "EPSG:4326"
+
     target_var = var_name if var_name in ds else ("waterdepth" if "waterdepth" in ds else list(ds.data_vars.keys())[0])
     raw_data = ds[target_var].values  # shape: (time, Mesh2d_nFaces)
 
-    print(f"   提取時序變數: [{target_var}] | 面數: {len(fx)} | 時間步數: {len(ds.time)}")
+    print(f"   提取時序變數: [{target_var}] | 面數: {len(fx)} | 時間步數: {len(ds.time)} | 坐標系: {crs_code}")
 
-    grid_data, x_coords, y_coords, tf = rasterize_dfm_faces_to_grid(fx, fy, raw_data, res=res)
+    grid_data, x_coords, y_coords, tf = rasterize_dfm_faces_to_grid(fx, fy, raw_data, res=res, crs_code=crs_code)
 
     # 構建結構化 Dataset
     ds_out = xr.Dataset(
@@ -195,7 +211,8 @@ def convert_map_nc_to_zarr(
             "x": x_coords
         },
         attrs={
-            "crs": "EPSG:3826",
+            "crs": crs_code,
+            "spatial_ref": crs_code,
             "transform": list(tf)[:6],
             "institution": ds.attrs.get("institution", "Deltares"),
             "source": ds.attrs.get("source", "D-Flow FM")
@@ -216,7 +233,7 @@ def convert_max_depth_to_cog(
     output_tif_path: str,
     is_fou: bool = True,
     crs_code: str = "EPSG:3826",
-    res: float = 5.0
+    res: Optional[float] = None
 ) -> str:
     """
     從 fou.nc (或 map.nc) 萃取最大淹水深度並產製標準 COG GeoTIFF (含金字塔 Overviews)
@@ -249,6 +266,7 @@ def convert_max_depth_to_cog(
     out_p = Path(output_tif_path)
     out_p.parent.mkdir(parents=True, exist_ok=True)
 
+    # 5m 黃金網格與 COG 金字塔標準配置
     profile = {
         "driver": "GTiff",
         "height": ny,
@@ -259,18 +277,19 @@ def convert_max_depth_to_cog(
         "transform": tf,
         "nodata": -9999.0,
         "tiled": True,
-        "blockxsize": 256,
-        "blockysize": 256,
-        "compress": "deflate",
+        "blockxsize": 512,
+        "blockysize": 512,
+        "compress": "lzw",
         "predictor": 2
     }
 
     with rasterio.open(out_p, "w", **profile) as dst:
         dst.write(grid_arr, 1)
-        dst.build_overviews([2, 4, 8, 16], Resampling.nearest)
+        # 建立 5 階金字塔圖層 (Overviews): 10m, 20m, 40m, 80m, 160m
+        dst.build_overviews([2, 4, 8, 16, 32], Resampling.nearest)
         dst.update_tags(ns="rio_overview", resampling="nearest")
 
-    print(f"   ✅ COG GeoTIFF 產製完成 (含 4 階金字塔): {out_p.resolve()}")
+    print(f"   ✅ COG GeoTIFF 產製完成 (5m 黃金網格，含 5 階金字塔 Overviews [2,4,8,16,32]): {out_p.resolve()}")
     return str(out_p)
 
 
@@ -308,7 +327,7 @@ def process_dfm_directory_pipeline(
         if "map" in files:
             base_name = Path(files["map"]).stem
             zarr_out = target_out_dir / f"{base_name}.zarr"
-            convert_map_nc_to_zarr(files["map"], str(zarr_out))
+            convert_map_nc_to_zarr(files["map"], str(zarr_out), crs_code=crs_code)
             part_summary["zarr"] = str(zarr_out)
 
         # 2. 處理最大淹水深度 fou.nc -> COG GeoTIFF
